@@ -7,8 +7,6 @@ from langchain.vectorstores import Pinecone
 from pydantic import BaseModel
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-import json
-import re
 
 app = FastAPI()
 
@@ -84,12 +82,47 @@ output：
     retriever_texts = [f"{doc.document['text']}" for doc in response]
     combined_text = " ".join(retriever_texts)
 
-    # Parse the combined text
-    reranked_texts = re.sub(r"(症狀: .*?)\s*(證型: .*?證)\s*", r"\2\n\1\n\n", combined_text)
+    # Use the combined text as the prompt for the chat completion
+    prompt = """從以下內容，一步一步地辨別，以及患者的症狀與哪一個證型類似，按照可能性由高到低排列
 
-    # Return the parsed text after reranking
-    return reranked_texts
+    回答方式：
+    證型1： {{證型}}
+    進一步鑒別:{{為該證型症状中，患者沒有的症状。 例子：“ 詢問有無：小便失禁，耳鳴等症狀”}}
+    相似症狀：{{原因：一步一步解釋為什麼你判斷患者的症状與這個證型相似。例如： “心悸，氣短，自汗，這些都是__證常見的症狀”}}
 
+    （剩餘證型必須按照以上格式以及方式表達，必須回答最少4個證型，必須必須！！ 切勿只回答一個
+    證型2：
+    進一步鑒別：
+    相似症狀：
+
+    證型3：
+    進一步鑒別：
+    相似症狀：
+
+    證型4：
+    進一步鑒別：
+    相似症狀：
+
+    參考內容：
+    {}""".format(
+        combined_text
+    )
+
+    print(combined_text)
+
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": ner_output},
+        ],
+        temperature=0,
+    )
+
+    print("Prompt tokens: ", completion["usage"]["prompt_tokens"])
+    print("Completion tokens: ", completion["usage"]["completion_tokens"])
+    print("Total tokens: ", completion["usage"]["total_tokens"])
+    return completion.choices[0].message["content"]
 
 
 @app.post("/lifestyle")
