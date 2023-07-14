@@ -1,10 +1,10 @@
 import cohere
 import openai
 import pinecone
+from fastapi import FastAPI, HTTPException
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
@@ -16,13 +16,13 @@ PINECONE_ENV = "us-west4-gcp"
 co = cohere.Client("GP6aGX4AlXzTE6wru1cSWqXbcCegq3Ey8L45Ls78")
 uri = "mongodb+srv://Datainput:inputdata@cluster0.jpw0qjv.mongodb.net/?retryWrites=true&w=majority"
 try:
-    client.admin.command('ping')
+    client.admin.command("ping")
     print("Pinged your deployment. You successfully connected to MongoDB!")
 except Exception as e:
     print(e)
 
 
-client = MongoClient(uri, server_api=ServerApi('1'))
+client = MongoClient(uri, server_api=ServerApi("1"))
 openai.api_key = OPENAI_API_KEY
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
@@ -34,26 +34,23 @@ vectorstore = Pinecone.from_existing_index(index_name=index_name, embedding=embe
 class Query(BaseModel):
     query: str
 
+
 ###
 
 
-db = client['cmedai']  # replace with your database name
-collection = db['教科书']  # replace with your collection name
+db = client["cmedai"]  # replace with your database name
+collection = db["教科书"]  # replace with your collection name
+
 
 def autocomplete_search(query, collection, path="病名", index="diseaseName"):
     pipeline = [
-        {"$search": {
-            "index": index, 
-            "autocomplete": {
-                "query": query, 
-                "path": path
-            }
-        }},
+        {"$search": {"index": index, "autocomplete": {"query": query, "path": path}}},
         {"$limit": 1},
-        {"$project": {"_id": 0, "病名": 1, "预防与调摄": 1}},  
+        {"$project": {"_id": 0, "病名": 1, "预防与调摄": 1}},
     ]
     result = collection.aggregate(pipeline)
     return list(result)
+
 
 @app.get("/autocomplete_search/{query}")
 async def autocomplete_search_route(query: str):

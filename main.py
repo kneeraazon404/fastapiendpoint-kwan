@@ -1,20 +1,25 @@
 import cohere
 import openai
 import pinecone
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone
 from pydantic import BaseModel
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 
 app = FastAPI()
 
 OPENAI_API_KEY = "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"
 PINECONE_API_KEY = "f7668e4e-8594-4e11-8850-b272faf7d492"
 PINECONE_ENV = "us-west4-gcp"
-co = cohere.Client("GP6aGX4AlXzTE6wru1cSWqXbcCegq3Ey8L45Ls78")
+COHERE_API_KEY = "GP6aGX4AlXzTE6wru1cSWqXbcCegq3Ey8L45Ls78"
+uri = "mongodb+srv://Datainput:inputdata@cluster0.jpw0qjv.mongodb.net/?retryWrites=true&w=majority"
 
+client = MongoClient(uri, server_api=ServerApi("1"))
 openai.api_key = OPENAI_API_KEY
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+co = cohere.Client(COHERE_API_KEY)
 
 pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
 index_name = "evidgpt"
@@ -23,6 +28,68 @@ vectorstore = Pinecone.from_existing_index(index_name=index_name, embedding=embe
 
 class Query(BaseModel):
     query: str
+
+
+db = client["cmedai"]  # replace with your database name
+collection = db["教科书"]  # replace with your collection name
+
+
+def autocomplete_search(query, collection, path="病名", index="diseaseName"):
+    pipeline = [
+        {"$search": {"index": index, "autocomplete": {"query": query, "path": path}}},
+        {"$limit": 1},
+        {"$project": {"_id": 0, "病名": 1, "预防与调摄": 1}},
+    ]
+    result = collection.aggregate(pipeline)
+    return list(result)
+
+
+@app.get("/autocomplete_search/{query}")
+async def autocomplete_search_route(query: str):
+    try:
+        result = autocomplete_search(query, collection)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def format_result(result):
+    output = ""
+    for doc in result:
+        output += f"{doc['病名']}\n"
+        output += "预防与调摄:\n"
+        for item in doc["预防与调摄"]:
+            output += f"  - {item}\n"
+        output += "\n"
+    return output
+
+
+@app.get("/formatted_autocomplete_search/{query}")
+async def formatted_autocomplete_search_route(query: str):
+    try:
+        result = autocomplete_search(query, collection)
+        return {"result": format_result(result)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/prescription/{query}")
+async def get_prescription(query: str):
+    try:
+        retrieved_docs = vectorstore.similarity_search(
+            query=query, k=50, namespace="fangji"
+        )
+        retriever_texts = [doc.page_content for doc in retrieved_docs]
+        response = co.rerank(
+            model="rerank-multilingual-v2.0",
+            query=query,
+            documents=retriever_texts,
+            top_n=5,
+        )
+        # Here we are directly returning the response
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/search")
