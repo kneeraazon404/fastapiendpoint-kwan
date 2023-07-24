@@ -12,7 +12,7 @@ import re
 
 app = FastAPI()
 
-OPENAI_API_KEY = "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"
+OPENAI_API_KEY = "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"
 PINECONE_API_KEY = "f7668e4e-8594-4e11-8850-b272faf7d492"
 PINECONE_ENV = "us-west4-gcp"
 co = cohere.Client("GP6aGX4AlXzTE6wru1cSWqXbcCegq3Ey8L45Ls78")
